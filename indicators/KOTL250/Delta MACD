@@ -1,0 +1,55 @@
+// ---------- Options ---------- //
+
+// Filters
+exchange = option(default=null, type=exchange, rebuild=true)
+type     = option(default=null, type=list, options=["spot","perp"], rebuild=true)
+
+// Periods
+fastLen   = option(default=12, type=number, rebuild=true)
+slowLen   = option(default=26, type=number, rebuild=true)
+signalLen = option(default=9,  type=number, rebuild=true)
+
+// Colors
+macdColor   = option(default="#42bda8", type=color, rebuild=true)
+signalColor = option(default="#f77c80", type=color, rebuild=true)
+posColor    = option(default="#22c55e", type=color, rebuild=true)
+negColor    = option(default="#ef4444", type=color, rebuild=true)
+
+// ---------- Delta ---------- //
+
+var src = source(type=type, exchange=exchange)
+
+var delta = 0
+if (src && src.sources) {
+  for (const [key, value] of Object.entries(src.sources)) {
+    delta += (value?.vbuy || 0) - (value?.vsell || 0)
+  }
+}
+
+// Split positive & negative pressure
+const posDelta = delta > 0 ? delta : 0
+const negDelta = delta < 0 ? Math.abs(delta) : 0
+
+// ---------- MACD Logic ---------- //
+
+// EMA of buying vs selling pressure
+const fastFlow = ema(posDelta, fastLen)
+const slowFlow = ema(negDelta, slowLen)
+
+// MACD line = difference in aggression
+const flowMACD = fastFlow - slowFlow
+
+// Signal line
+const signalLine = ema(flowMACD, signalLen)
+
+// Histogram
+const histoValue = flowMACD - signalLine
+
+// ---------- Plot ---------- //
+
+line(flowMACD, color=macdColor, title="Delta MACD")
+line(signalLine, color=signalColor, title="Signal")
+
+histoValue > 0
+  ? histogram(histoValue, color=posColor, title="Momentum")
+  : histogram(histoValue, color=negColor, title="Momentum")
